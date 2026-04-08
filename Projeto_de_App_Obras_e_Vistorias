@@ -1,0 +1,286 @@
+import * as ImagePicker from "expo-image-picker"; 
+import { Image } from "react-native";
+import * as XLSX from "xlsx";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  Button,
+  ScrollView,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+type Item = {
+  local: string;
+  localEspecifico: string;
+  oQueFazer: string;
+  quem: string;
+  quando: string;
+  quanto: string;
+  observacao: string;
+  fotoAntes: string;
+  fotoDepois: string;
+};
+
+export default function App() {
+  const [data, setData] = useState<Item[]>([]);
+
+  const [filtroLocal, setFiltroLocal] = useState("");
+  const [filtroQuem, setFiltroQuem] = useState("");
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    const saved = await AsyncStorage.getItem("inspecao");
+    if (saved) setData(JSON.parse(saved));
+  };
+
+  const saveData = async () => {
+    await AsyncStorage.setItem("inspecao", JSON.stringify(data));
+    alert("Salvo com sucesso!");
+  };
+
+  const updateField = (index: number, field: keyof Item, value: string) => {
+    const newData = [...data];
+    newData[index][field] = value;
+    setData(newData);
+  };
+
+  const addItem = () => {
+    setData([
+      ...data,
+      {
+        local: "",
+        localEspecifico: "",
+        oQueFazer: "",
+        quem: "",
+        quando: "",
+        quanto: "",
+        observacao: "",
+        fotoAntes: "",
+        fotoDepois: "",
+      },
+    ]);
+  };
+
+  // Filtro
+  const dadosFiltrados = data.filter((item) => {
+    return (
+      item.local?.toLowerCase().includes(filtroLocal.toLowerCase()) &&
+      item.quem?.toLowerCase().includes(filtroQuem.toLowerCase())
+    );
+  });
+
+  // Camera
+  const tirarFoto = async (index: number, tipo: "antes" | "depois") => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      alert("Permissão da câmera negada!");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+
+      const newData = [...data];
+
+      if (tipo === "antes") {
+        newData[index].fotoAntes = uri;
+      } else {
+        newData[index].fotoDepois = uri;
+      }
+
+      setData(newData);
+    }
+  };
+
+  // Exportar no excel
+  const exportarExcel = async () => {
+  try {
+    const dadosFormatados = data.map((item) => ({
+      Local: item.local,
+      "Local específico": item.localEspecifico,
+      "O que fazer": item.oQueFazer,
+      Quem: item.quem,
+      Quando: item.quando,
+      Quanto: item.quanto,
+      Observação: item.observacao,
+      "Foto Antes": item.fotoAntes,
+      "Foto Depois": item.fotoDepois,
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Relatorio");
+
+    const wbout = XLSX.write(workbook, {
+      type: "base64",
+      bookType: "xlsx",
+    });
+
+    const fileUri = FileSystem.documentDirectory + "relatorio.xlsx";
+
+await FileSystem.writeAsStringAsync(fileUri, wbout, {
+  encoding: FileSystem.EncodingType.Base64,
+});
+
+await Sharing.shareAsync(fileUri);
+
+  } catch (error) {
+    console.log(error);
+    alert("Erro ao gerar Excel");
+  }
+};
+
+  return (
+    <View style={styles.container}>
+      <Button title="Adicionar Item" onPress={addItem} />
+      <Button title="Salvar" onPress={saveData} />
+      <Button title="Exportar Excel" onPress={exportarExcel} />
+
+      {/* 🔍 FILTROS */}
+      <Text style={{ color: "#fff", fontWeight: "bold", marginTop: 10 }}>
+        🔍 Filtros
+      </Text>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Filtrar por Local"
+        value={filtroLocal}
+        onChangeText={setFiltroLocal}
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Filtrar por Quem"
+        value={filtroQuem}
+        onChangeText={setFiltroQuem}
+      />
+
+      <Button
+        title="Limpar Filtros"
+        onPress={() => {
+          setFiltroLocal("");
+          setFiltroQuem("");
+        }}
+      />
+
+      <ScrollView>
+        {dadosFiltrados.map((item, index) => (
+          <View key={index} style={styles.card}>
+            <Text style={styles.title}>Item {index + 1}</Text>
+
+            <Input label="Local" value={item.local}
+              onChange={(v: string) => updateField(index, "local", v)} />
+
+            <Input label="Local específico" value={item.localEspecifico}
+              onChange={(v: string) => updateField(index, "localEspecifico", v)} />
+
+            <Input label="O que fazer?" value={item.oQueFazer}
+              onChange={(v: string) => updateField(index, "oQueFazer", v)} />
+
+            <Input label="Quem vai fazer?" value={item.quem}
+              onChange={(v: string) => updateField(index, "quem", v)} />
+
+            <Input label="Quando fazer?" value={item.quando}
+              onChange={(v: string) => updateField(index, "quando", v)} />
+
+            <Input label="Quanto vai custar?" value={item.quanto}
+              onChange={(v: string) => updateField(index, "quanto", v)} />
+
+
+	    <Input label="Quanto tempo vai demorar?" value={item.tempo}
+              onChange={(v: string) => updateField(index, "tempo", v)} />
+
+
+            <Input label="Outras observações" value={item.observacao}
+              onChange={(v: string) => updateField(index, "observacao", v)} />
+
+            <Text>Foto Antes</Text>
+            <TouchableOpacity
+              style={styles.botaoFoto}
+              onPress={() => tirarFoto(index, "antes")}
+            >
+              <Text style={{ color: "#fff" }}>Tirar Foto</Text>
+            </TouchableOpacity>
+
+            {item.fotoAntes ? (
+              <Image source={{ uri: item.fotoAntes }} style={styles.imagem} />
+            ) : null}
+
+            <Text>Foto Depois</Text>
+            <TouchableOpacity
+              style={styles.botaoFoto}
+              onPress={() => tirarFoto(index, "depois")}
+            >
+              <Text style={{ color: "#fff" }}>Tirar Foto</Text>
+            </TouchableOpacity>
+
+            {item.fotoDepois ? (
+              <Image source={{ uri: item.fotoDepois }} style={styles.imagem} />
+            ) : null}
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const Input = ({ label, value, onChange }: any) => (
+  <View style={{ marginBottom: 10 }}>
+    <Text>{label}</Text>
+    <TextInput style={styles.input} value={value} onChangeText={onChange} />
+  </View>
+);
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 15,
+    marginTop: 40,
+  },
+  card: {
+    backgroundColor: "#f2f2f2",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 15,
+  },
+  title: {
+    fontWeight: "bold",
+    marginBottom: 10,
+    fontSize: 16,
+  },
+  input: {
+    borderWidth: 1,
+    padding: 8,
+    borderRadius: 5,
+    backgroundColor: "#fff",
+    marginBottom: 10,
+  },
+  botaoFoto: {
+    backgroundColor: "#007bff",
+    padding: 10,
+    borderRadius: 5,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  imagem: {
+    width: "100%",
+    height: 200,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+});
